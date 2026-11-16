@@ -1,0 +1,32 @@
+## .NET
+bin/
+obj/
+*.user
+*.suo
+.vs/
+*.cache
+*.DotSettings.user
+TestResults/
+publish/
+
+## EF Migrations bundle
+efbundle*
+
+## Secrets / local config
+appsettings.Local.json
+appsettings.*.Local.json
+**/secrets.json
+
+## Node / Angular
+node_modules/
+dist/
+.angular/
+*.js.map
+
+## Env / IDE
+.env
+.env.*
+.idea/
+.vscode/
+*.DS_Store
+Thumbs.db
