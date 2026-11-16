@@ -1,7 +1,7 @@
 using System.ComponentModel.DataAnnotations;
 using BookingSystem.Core.Enums;
 
-namespace BookingSystem.API.DTOs;
+namespace BookingSystem.Application.DTOs;
 
 public record CreateBookingDto(
     [Required] int ProviderId,

@@ -1,6 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 
-namespace BookingSystem.API.DTOs;
+namespace BookingSystem.Application.DTOs;
 
 public record RegisterDto(
     [Required, EmailAddress] string Email,
@@ -21,3 +21,11 @@ public record TokenResponseDto(
     string Email,
     string Role,
     string TimeZoneId);
+
+public record UserProfileDto(
+    string Id,
+    string? Email,
+    string? FirstName,
+    string? LastName,
+    string TimeZoneId,
+    string? Role);

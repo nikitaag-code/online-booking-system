@@ -1,11 +1,15 @@
 using System.Text;
 using System.Threading.RateLimiting;
+using BookingSystem.Application.Exceptions;
+using BookingSystem.Application.Services;
+using BookingSystem.Application.Services.Interfaces;
 using BookingSystem.Core.Entities;
 using BookingSystem.Core.Interfaces;
 using BookingSystem.Core.Services;
 using BookingSystem.Infrastructure.Data;
 using BookingSystem.Infrastructure.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
@@ -55,7 +59,6 @@ builder.Services
             ClockSkew               = TimeSpan.Zero
         };
     })
-    // OAuth/OpenID Connect stub — configure with a real provider in production.
     .AddOpenIdConnect("oidc", opt =>
     {
         opt.Authority             = builder.Configuration["Oidc:Authority"] ?? "https://localhost:5001";
@@ -71,25 +74,23 @@ builder.Services
 
 builder.Services.AddAuthorization();
 
-// ── Rate limiting (ASP.NET Core built-in) ─────────────────────────────────────
+// ── Rate limiting ─────────────────────────────────────────────────────────────
 builder.Services.AddRateLimiter(opt =>
 {
-    // 10 booking requests per minute per IP — prevents spam/abuse
     opt.AddFixedWindowLimiter("BookingPolicy", l =>
     {
-        l.PermitLimit         = 10;
-        l.Window              = TimeSpan.FromMinutes(1);
+        l.PermitLimit          = 10;
+        l.Window               = TimeSpan.FromMinutes(1);
         l.QueueProcessingOrder = QueueProcessingOrder.OldestFirst;
-        l.QueueLimit          = 2;
+        l.QueueLimit           = 2;
     });
 
-    // 60 read requests per minute per IP
     opt.AddFixedWindowLimiter("ReadPolicy", l =>
     {
-        l.PermitLimit         = 60;
-        l.Window              = TimeSpan.FromMinutes(1);
+        l.PermitLimit          = 60;
+        l.Window               = TimeSpan.FromMinutes(1);
         l.QueueProcessingOrder = QueueProcessingOrder.OldestFirst;
-        l.QueueLimit          = 5;
+        l.QueueLimit           = 5;
     });
 
     opt.OnRejected = async (ctx, _) =>
@@ -106,9 +107,16 @@ builder.Services.AddCors(opt => opt.AddPolicy("Dev", p =>
      .AllowAnyHeader()
      .AllowCredentials()));
 
-// ── Domain / Application services ────────────────────────────────────────────
+// ── Domain / Infrastructure services ─────────────────────────────────────────
 builder.Services.AddScoped<IAvailabilityService, AvailabilityService>();
 builder.Services.AddScoped<IEmailService,        EmailService>();
+
+// ── Application services ──────────────────────────────────────────────────────
+builder.Services.AddScoped<IBookingService,           BookingService>();
+builder.Services.AddScoped<IProviderService,          BookingSystem.Application.Services.ProviderService>();
+builder.Services.AddScoped<ISlotService,              SlotService>();
+builder.Services.AddScoped<IAuthService,              AuthService>();
+builder.Services.AddScoped<IProviderDashboardService, ProviderDashboardService>();
 
 // ── MVC + Swagger ─────────────────────────────────────────────────────────────
 builder.Services.AddControllers();
@@ -137,12 +145,26 @@ builder.Services.AddSwaggerGen(c =>
 // ─────────────────────────────────────────────────────────────────────────────
 var app = builder.Build();
 
+// ── Global exception handler (maps application exceptions to HTTP status codes)
+app.UseExceptionHandler(errorApp => errorApp.Run(async ctx =>
+{
+    var ex = ctx.Features.Get<IExceptionHandlerFeature>()?.Error;
+    ctx.Response.ContentType = "application/json";
+    ctx.Response.StatusCode = ex switch
+    {
+        NotFoundException  => StatusCodes.Status404NotFound,
+        ConflictException  => StatusCodes.Status409Conflict,
+        ForbiddenException => StatusCodes.Status403Forbidden,
+        ValidationException => StatusCodes.Status400BadRequest,
+        _                  => StatusCodes.Status500InternalServerError
+    };
+    await ctx.Response.WriteAsJsonAsync(new { error = ex?.Message ?? "An unexpected error occurred." });
+}));
+
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
     app.UseSwaggerUI();
-
-    // Seed sample data on startup in development.
     await BookingSystem.Infrastructure.Data.SeedData.SeedAsync(app.Services);
 }
 
@@ -152,11 +174,9 @@ app.UseRateLimiter();
 app.UseAuthentication();
 app.UseAuthorization();
 
-// Apply rate-limiting policies to relevant route groups
 app.MapControllers()
    .RequireRateLimiting("ReadPolicy");
 
-// Tighter rate limit on the booking creation endpoint
 app.MapControllerRoute(
     name: "bookings-create",
     pattern: "api/bookings")
@@ -164,5 +184,4 @@ app.MapControllerRoute(
 
 app.Run();
 
-// Make Program discoverable for integration tests
 public partial class Program { }

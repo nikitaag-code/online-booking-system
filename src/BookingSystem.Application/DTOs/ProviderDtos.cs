@@ -1,6 +1,4 @@
-using BookingSystem.Core.Entities;
-
-namespace BookingSystem.API.DTOs;
+namespace BookingSystem.Application.DTOs;
 
 public record ProviderSummaryDto(
     int Id,
